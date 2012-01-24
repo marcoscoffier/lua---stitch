@@ -12,29 +12,37 @@ function Stitcher:__init()
    self.panocrop   = {0,2588,245,731}
    self.panosize   = {self.panocrop[2]-self.panocrop[1],
                       self.panocrop[4]-self.panocrop[3]}
-   self.panomidpt  = panosize[1]/2
+   self.panomidpt  = self.panosize[1]/2
    self.index    = torch.Tensor(3,self.panosize[2],self.panosize[1])
    self.panorama = torch.Tensor(3,self.panosize[2],self.panosize[1])
 end
 
 -- extract all necessary information from .pto file
-function Stitcher.get_info()
+function Stitcher:get_info()
 end
 
 -- wrapper to the command line hugin tool pano_trafo to make index
 -- maps for all images in a .pto file
-function Stitcher.make_maps()
+function Stitcher:make_maps()
 end
 
-function Stitcher.load_index(fname)
+function Stitcher:load_index(fname)
+   local f = torch.DiskFile(fname,'r')
+   f:binary()
+   self.index = f:readObject()
+   f:close()
 end
 
-function Stitcher.save_index(fname)
+function Stitcher:save_index(fname)
+   local f = torch.DiskFile(fname,'w')
+   f:binary()
+   f:writeObject(self.index)
+   f:close()
 end
 
 -- from a bunch of maps (torch.Files) produced with make_maps(),
 -- create a single index self.index
-function Stitcher.make_index(maps)
+function Stitcher:make_index(maps)
    sys.tic()
    local ipatches = {}
    local img_maxw = {}
@@ -45,7 +53,7 @@ function Stitcher.make_index(maps)
    -- loops through the images and creates an index size of the panorama
    -- with only the indexes to that image.
    for i = 1,self.nimages do 
-      ipatches[i] = torch.Tensor(2,self.pheight,self.pwidth)
+      ipatches[i] = torch.Tensor(2,self.panosize[2],self.panosize[1])
       maps[i]:seek(1)
       local ixy = ipatches[i]
       if not img_maxw[i] then img_maxw[i] = -math.huge end
@@ -105,7 +113,7 @@ function Stitcher.make_index(maps)
    -- way point of overlap to switch input images in the output.  Assumes
    -- horizonal sequential images, so not very general
    for i = 1,self.nimages do
-      if wrapped_image_no > 1 and not (i == wrapped_image_no) then
+      if (wrapped_image_no > 1) and (not (i == wrapped_image_no)) then
          local prev = i-1
          local next = i+1
          local crop_min   = 0
@@ -113,14 +121,15 @@ function Stitcher.make_index(maps)
          local crop_width = 0
          local overlap_left  = 0
          local overlap_right = 0
-         if prev < 1 then prev = nimages end
-         if next > nimages then next = 1 end
+         if prev < 1 then prev = self.nimages end
+         if next > self.nimages then next = 1 end
          overlap_min = (img_maxw[prev] - img_minw[i]) / 2
          overlap_max = (img_maxw[i] - img_minw[next]) / 2
          crop_left   =  img_minw[i] + overlap_min
          crop_right  =  img_maxw[i] - overlap_max
-         crop_width  =  crop_right  - crop_left 
-         self.index:select(1,1):fill(i)
+         crop_width  =  crop_right  - crop_left
+         print("fill index with",i)
+         self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
          self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width))
       end
    end
@@ -129,21 +138,23 @@ end
 
 
 
-function Stitcher.stitch ()
-   for i = 1,pheight do 
-      for j = 1,pwidth do
-         local imgidx = ioutput[1][i][j]
-         local yidx   = ioutput[2][i][j]
-         local xidx   = ioutput[3][i][j]
-         if xidx > 0 and xidx <= iwidth and 
-            yidx > 0 and yidx <= iheight then
-            imgioutput:select(3,j):select(2,i):copy(img[imgidx]:select(3,xidx):select(2,yidx))
+function Stitcher:stitch (img, pano)
+   local pano = pano or self.panorama
+   pano:resizeAs(self.index)
+   for i = 1,self.panosize[2] do 
+      for j = 1,self.panosize[1] do
+         local imgidx = self.index[1][i][j]
+         local yidx   = self.index[2][i][j]
+         local xidx   = self.index[3][i][j]
+         if xidx > 0 and xidx <= self.imgsize[1] and 
+            yidx > 0 and yidx <= self.imgsize[2] then
+            pano:select(3,j):select(2,i):copy(img[imgidx]:select(3,xidx):select(2,yidx))
          end
       end 
    end
 end
 
-function Stitcher.stitch_c ()
+function Stitcher:stitch_c ()
    -- pano.resize()
    libstitch.stitch(imgiouput,ioutput,img)
 end
