@@ -4,15 +4,14 @@ index_file = 'examples/frame_300_index.tch'
 
 s = stitcher.new()
 
--- imapf = {}
--- imapf[1] = torch.DiskFile('images/image0topano.map')
--- imapf[2] = torch.DiskFile('images/image1topano.map')
--- imapf[3] = torch.DiskFile('images/image2topano.map')
--- imapf[4] = torch.DiskFile('images/image3topano.map')
--- s:make_index(imapf)
--- s:save_index(index_file)
-
-s:load_index(index_file)
+if (sys.fstat(index_file)) then
+   s:load_index(index_file)
+else
+   sys.tic()
+   s:make_index(s:make_maps())
+   s:save_index(index_file)
+   print("made index in", sys.toc())
+end
 
 img = {}
 img[1] = image.load('images/frame_00300_0.png')

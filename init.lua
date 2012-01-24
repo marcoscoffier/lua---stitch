@@ -1,10 +1,12 @@
 require 'xlua'
 require 'image'
+require 'torch'
 require 'libstitch'
 
 local Stitcher = torch.class('stitcher')
 
 function Stitcher:__init()
+   self.pto_file   = 'examples/frame_00300.pto' 
    -- need to move initialization into get info function
    self.nimages    = 4
    self.imgsize    = {1280,960}
@@ -18,12 +20,22 @@ function Stitcher:__init()
 end
 
 -- extract all necessary information from .pto file
-function Stitcher:get_info()
+function Stitcher:get_info(fname)
+   local f = torch.DiskFile(fname,'r')
+   f:ascii() 
 end
 
 -- wrapper to the command line hugin tool pano_trafo to make index
 -- maps for all images in a .pto file
 function Stitcher:make_maps()
+   local maps = {}
+   for i = 0,self.nimages - 1 do 
+      local cmd = string.format("for x in `seq 1 %d` ; do for y in `seq 1 %d` ; do echo %d $x $y ; done ;done | pano_trafo %s",
+                                self.imgsize[1],self.imgsize[2],
+                                i,self.pto_file)
+      maps[i+1] = torch.PipeFile(cmd,'r');
+   end
+   return maps
 end
 
 function Stitcher:load_index(fname)
@@ -43,7 +55,6 @@ end
 -- from a bunch of maps (torch.Files) produced with make_maps(),
 -- create a single index self.index
 function Stitcher:make_index(maps)
-   sys.tic()
    local ipatches = {}
    local img_maxw = {}
    local img_minw = {}
@@ -54,7 +65,9 @@ function Stitcher:make_index(maps)
    -- with only the indexes to that image.
    for i = 1,self.nimages do 
       ipatches[i] = torch.Tensor(2,self.panosize[2],self.panosize[1])
-      maps[i]:seek(1)
+      if torch.typename(maps[i]) ~= 'torch.PipeFile' then 
+         maps[i]:seek(1)
+      end
       local ixy = ipatches[i]
       if not img_maxw[i] then img_maxw[i] = -math.huge end
       if not img_minw[i] then img_minw[i] =  math.huge end
@@ -98,10 +111,6 @@ function Stitcher:make_index(maps)
          wrapped_image = false
       end
    end
-   print("Read and map images to patches: "..sys.toc())
-   print(img_maxw)
-   print(img_minw)
-   sys.tic()
    if wrapped_image_no > 1 then 
       self.index:select(1,1):fill(wrapped_image_no)
       self.index:narrow(1,2,2):copy(ipatches[wrapped_image_no])
@@ -128,12 +137,10 @@ function Stitcher:make_index(maps)
          crop_left   =  img_minw[i] + overlap_min
          crop_right  =  img_maxw[i] - overlap_max
          crop_width  =  crop_right  - crop_left
-         print("fill index with",i)
          self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
          self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width))
       end
    end
-   print("created index"..sys.toc())
 end
 
 
@@ -154,6 +161,7 @@ function Stitcher:stitch (img, pano)
    end
 end
 
+-- need to pass table of images to C function.
 function Stitcher:stitch_c ()
    -- pano.resize()
    libstitch.stitch(imgiouput,ioutput,img)
