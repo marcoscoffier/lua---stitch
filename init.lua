@@ -217,7 +217,7 @@ function Stitcher:stitch (img, pano)
 end
 
 -- need to pass table of images to C function.
-function Stitcher:stitch_c ()
+function Stitcher:stitch_c (frames)
    -- pano.resize()
-   libstitch.stitch(imgiouput,ioutput,img)
+   libstitch.stitch(self.panorama,self.index,frames)
 end

@@ -25,6 +25,7 @@ imgs[4] = image.load("examples/frame_4_00768.png")
 imgs[5] = image.load("examples/frame_5_00768.png")
 
 sys.tic()
-libstitch.stitch(s.panorama,s.index,s.nimages,imgs[1],imgs[2],imgs[3],imgs[4],imgs[5])
+s.panorama.stitch.stitch(s.panorama,s.index,s.nimages,
+                         imgs[1],imgs[2],imgs[3],imgs[4],imgs[5])
 print('lua stitch',sys.toc())
 image.display(s.panorama)
