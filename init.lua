@@ -144,7 +144,6 @@ function Stitcher:make_index(maps)
       else
          wrapped_images[i] = false
       end
-      print(i,img_minw[i],img_maxw[i],wrapped_images[i])
    end
    -- find boundaries.  Given the stored max and min index for each
    -- image.  compute overlaps and copy index to final panorama
@@ -180,7 +179,6 @@ function Stitcher:make_index(maps)
             crop_left   =  img_minw[i] + overlap_min
             crop_right  =  self.panosize[1]
             crop_width  =  crop_right  - crop_left
-            print(i,crop_left,crop_right,crop_width)
             self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
             self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width)) 
          end
@@ -190,7 +188,6 @@ function Stitcher:make_index(maps)
             crop_left   =  1
             crop_right  =  img_maxw[i] - overlap_max
             crop_width  =  crop_right  - crop_left
-            print(i,crop_left,crop_right,crop_width)
             self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
             self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width))
          end
