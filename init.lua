@@ -52,8 +52,7 @@ function Stitcher:__init(pto_file)
    self.panosize   = {self.panocrop[2]-self.panocrop[1],
                       self.panocrop[4]-self.panocrop[3]}
    self.panomidpt  = self.panosize[1]/2
-   self.index    = torch.Tensor(3,self.panosize[2],self.panosize[1])
-   self.panorama = torch.Tensor(3,self.panosize[2],self.panosize[1])
+   self.index    = torch.Tensor(3,self.panosize[2],self.panosize[1]) 
 end
 
 -- extract all necessary information from .pto file
@@ -196,25 +195,8 @@ function Stitcher:make_index(maps)
 end
 
 
-
-function Stitcher:stitch (img, pano)
-   local pano = pano or self.panorama
-   pano:resizeAs(self.index)
-   for i = 1,self.panosize[2] do 
-      for j = 1,self.panosize[1] do
-         local imgidx = self.index[1][i][j]
-         local yidx   = self.index[2][i][j]
-         local xidx   = self.index[3][i][j]
-         if xidx > 0 and xidx <= self.imgwidth[i] and 
-            yidx > 0 and yidx <= self.imgheight[i] then
-            pano:select(3,j):select(2,i):copy(img[imgidx]:select(3,xidx):select(2,yidx))
-         end
-      end 
-   end
-end
-
 -- need to pass table of images to C function.
-function Stitcher:stitch_c (frames)
-   -- pano.resize()
-   libstitch.stitch(self.panorama,self.index,frames)
+function Stitcher:stitch (panorama,frames)
+   panorama:resize(3,self.panosize[2],self.panosize[1])
+   panorama.stitch.stitch(panorama,self.index,frames)
 end

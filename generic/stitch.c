@@ -15,11 +15,11 @@
 // nimages - is the number of images use to make the panorama
 // image1, ... imagen - are the image in a torch tensor
 static int Lstitch_(stitch)(lua_State *L) {
+  int nargs = lua_gettop(L);
   THTensor *pano =
     (THTensor *)luaT_checkudata(L, 1, torch_(Tensor_id));
   THTensor *offset_map =
     (THTensor *)luaT_checkudata(L, 2, torch_(Tensor_id));
-  int nimages = lua_tonumber(L,3);
   THTensor *images[MAXIMAGES];
   int i = 0;
   long npixels = offset_map->size[1]*offset_map->size[2];
@@ -39,12 +39,37 @@ static int Lstitch_(stitch)(lua_State *L) {
   real * offImg = offset_pt;
   real * offX   = offset_pt +    offset_map->stride[0];
   real * offY   = offset_pt + (2*offset_map->stride[0]);
+  int nimages = 0;
   /* finish processing input image tensors */
-  for(i=0;i<nimages;i++){
-    images[i] = (THTensor *)luaT_checkudata(L, i+4, torch_(Tensor_id));
-    images_pt[i]    = THTensor_(data)(images[i]);
+  /* either you can pass a table */
+  /* or a number and variable length of args */
+  if (nargs == 3){
+    if (lua_istable(L,3)){
+      nimages = lua_objlen (L, 3);
+      /* table is in the stack at index 3 */
+      lua_pushnil(L);  /* first key */
+      i = 0;
+      while (lua_next(L, 3) != 0) {
+        /* 'key' (at index -2) and 'value' (at index -1) */
+        images[i]    =
+          (THTensor *)luaT_checkudata(L, -1, torch_(Tensor_id));
+        images_pt[i] = THTensor_(data)(images[i]);
+        /* removes 'value'; keeps 'key' for next iteration */
+        lua_pop(L, 1);
+        i = i+1;
+      }
+    } else {
+      lua_pushstring(L, "with 3 args last argument is a table");
+      lua_error(L);
+    }
+  } else {
+    nimages = lua_tonumber(L,3);
+    for(i=0;i<nimages;i++){
+      images[i]    =
+        (THTensor *)luaT_checkudata(L, i+4, torch_(Tensor_id));
+      images_pt[i] = THTensor_(data)(images[i]);
+    }
   }
-
   for(i=0;i<npixels;i++){
     curImg    = images[(long unsigned int)*offImg - 1];
     curImg_pt = images_pt[(long unsigned int)*offImg - 1]; 
