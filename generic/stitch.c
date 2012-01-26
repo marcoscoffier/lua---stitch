@@ -18,28 +18,28 @@ static int Lstitch_(stitch)(lua_State *L) {
   int nargs = lua_gettop(L);
   THTensor *pano =
     (THTensor *)luaT_checkudata(L, 1, torch_(Tensor_id));
-  THTensor *offset_map =
-    (THTensor *)luaT_checkudata(L, 2, torch_(Tensor_id));
+  THLongTensor *offset_map =
+    (THLongTensor *)luaT_checkudata(L, 2, luaT_checktypename2id(L, "torch.LongTensor"));
   THTensor *images[MAXIMAGES];
   int i = 0;
   long npixels = offset_map->size[1]*offset_map->size[2];
   real *pano_pt   = THTensor_(data)(pano); 
-  real *offset_pt = THTensor_(data)(offset_map);
+  long *offset_pt = THLongTensor_data(offset_map);
   real *images_pt[MAXIMAGES];
-
+  long images_npixels[MAXIMAGES];
+  long images_Goff[MAXIMAGES];
+  long images_Boff[MAXIMAGES];
+  
   real * panoR = pano_pt;
   real * panoG = pano_pt +    pano->stride[0];
   real * panoB = pano_pt + (2*pano->stride[0]);
   THTensor * curImg = NULL;
-  real * curImg_pt = NULL;
+  real * curImg_pt  = NULL;
   long unsigned int XYoffset = 0;
-  real imgR   = 0;
-  real imgG   = 0; 
-  real imgB   = 0;
-  real * offImg = offset_pt;
-  real * offX   = offset_pt +    offset_map->stride[0];
-  real * offY   = offset_pt + (2*offset_map->stride[0]);
+  long * offImg      = offset_pt;
+  long * offIndexXY  = offset_pt + offset_map->stride[0];
   int nimages = 0;
+  long cImgOff = 0;
   /* finish processing input image tensors */
   /* either you can pass a table */
   /* or a number and variable length of args */
@@ -53,6 +53,9 @@ static int Lstitch_(stitch)(lua_State *L) {
         /* 'key' (at index -2) and 'value' (at index -1) */
         images[i]    =
           (THTensor *)luaT_checkudata(L, -1, torch_(Tensor_id));
+        images_npixels[i] = images[i]->size[1]*images[i]->size[2];
+        images_Goff[i] = images[i]->stride[0];
+        images_Boff[i] = 2*images[i]->stride[0];
         images_pt[i] = THTensor_(data)(images[i]);
         /* removes 'value'; keeps 'key' for next iteration */
         lua_pop(L, 1);
@@ -67,30 +70,28 @@ static int Lstitch_(stitch)(lua_State *L) {
     for(i=0;i<nimages;i++){
       images[i]    =
         (THTensor *)luaT_checkudata(L, i+4, torch_(Tensor_id));
-      images_pt[i] = THTensor_(data)(images[i]);
+      images_npixels[i] = images[i]->size[1]*images[i]->size[2];
+      images_Goff[i]    = images[i]->stride[0];
+      images_Boff[i]    = 2*images[i]->stride[0];
+      images_pt[i]      = THTensor_(data)(images[i]);
     }
   }
   for(i=0;i<npixels;i++){
-    curImg    = images[(long unsigned int)*offImg - 1];
-    curImg_pt = images_pt[(long unsigned int)*offImg - 1]; 
-    if ((*offX > 0) && (*offX < curImg->size[1]) &&
-        (*offY > 0) && (*offY < curImg->size[2])){
-      XYoffset  = 
-        ((long unsigned int)*offX * curImg->stride[1] +
-         (long unsigned int)*offY);
-      imgR   = curImg_pt[XYoffset];
-      imgG   = curImg_pt[XYoffset + curImg->stride[0]] ;
-      imgB   = curImg_pt[XYoffset + (2 * curImg->stride[0])];
-      *panoR = imgR;
-      *panoG = imgG;
-      *panoB = imgB;
+    cImgOff   = (long unsigned int)*offImg - 1;
+    curImg    = images[cImgOff];
+    curImg_pt = images_pt[cImgOff];
+    if ((*offIndexXY > 0) &&
+        (*offIndexXY < images_npixels[cImgOff])){
+      XYoffset  =  (long unsigned int)*offIndexXY;
+      *panoR   = curImg_pt[XYoffset];
+      *panoG   = curImg_pt[XYoffset + images_Goff[cImgOff]] ; 
+      *panoB   = curImg_pt[XYoffset + images_Boff[cImgOff]]; 
     }
     panoR++;
     panoG++;
     panoB++;
     offImg++;
-    offX++;
-    offY++;
+    offIndexXY++;
   }
 }
 

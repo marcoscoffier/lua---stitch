@@ -52,7 +52,9 @@ function Stitcher:__init(pto_file)
    self.panosize   = {self.panocrop[2]-self.panocrop[1],
                       self.panocrop[4]-self.panocrop[3]}
    self.panomidpt  = self.panosize[1]/2
-   self.index    = torch.Tensor(3,self.panosize[2],self.panosize[1]) 
+   -- index is 2 numbers (index of image, offset to the xy for Red
+   -- pixel location in image)
+   self.index    = torch.LongTensor(2,self.panosize[2],self.panosize[1]) 
 end
 
 -- extract all necessary information from .pto file
@@ -66,9 +68,9 @@ end
 function Stitcher:make_maps()
    local maps = {}
    for i = 1,self.nimages do 
-      local cmd = string.format("for x in `seq 1 %d` ; do for y in `seq 1 %d` ; do echo %d $x $y ; done ;done | pano_trafo %s",
-                                self.imgwidth[i],self.imgheight[i],
-                                i-1,self.pto_file)
+      local cmd = string.format("for y in `seq 1 %d` ; do for x in `seq 1 %d` ; do echo %d $x $y ; done ;done | pano_trafo %s",
+                                 self.imgheight[i],self.imgwidth[i],
+                                 i-1,self.pto_file)
       maps[i] = torch.PipeFile(cmd,'r');
    end
    return maps
@@ -101,19 +103,19 @@ function Stitcher:make_index(maps)
    -- loops through the images and creates an index size of the panorama
    -- with only the indexes to that image.
    for i = 1,self.nimages do 
-      ipatches[i] = torch.Tensor(2,self.panosize[2],self.panosize[1])
+      ipatches[i] = torch.Tensor(self.panosize[2],self.panosize[1])
       if torch.typename(maps[i]) ~= 'torch.PipeFile' then 
          maps[i]:seek(1)
       end
-      local ixy = ipatches[i]
+      local ioff = ipatches[i]
       if not img_maxw[i] then img_maxw[i] = -math.huge end
       if not img_minw[i] then img_minw[i] =  math.huge end
       if not img_maxwumpt[i] then img_maxwumpt[i] = -math.huge end
       if not img_minwompt[i] then img_minwompt[i] =  math.huge end
-      for x = 1,self.imgwidth[i] do 
-         for y = 1,self.imgheight[i] do
-            local px = math.floor(maps[i]:readFloat() + 0.55)
-            local py = math.floor(maps[i]:readFloat() + 0.55)
+      for y = 1,self.imgheight[i] do
+         for x = 1,self.imgwidth[i] do 
+            local px = math.floor(maps[i]:readFloat() + 0.5)
+            local py = math.floor(maps[i]:readFloat() + 0.5)
             if (((px > self.panocrop[1]) and (px <= self.panocrop[2])) 
              and 
              ((py > self.panocrop[3]) and (py <= self.panocrop[4]))) then
@@ -128,8 +130,7 @@ function Stitcher:make_index(maps)
                local ipy = py-self.panocrop[3]
                local ipx = px-self.panocrop[1]
                -- fill index
-               ixy[1][ipy][ipx] = y
-               ixy[2][ipy][ipx] = x
+               ioff[ipy][ipx] = y * self.imgwidth[i] + x 
             end
          end
       end
@@ -169,8 +170,11 @@ function Stitcher:make_index(maps)
          overlap_min = (img_maxw[prev] - img_minw[i]) / 2
          crop_left   =  img_minw[i] + overlap_min
          crop_width  =  crop_right  - crop_left
+         print(self.index:size())
+         print(crop_left,crop_width)
          self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
-         self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width))
+         self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width))
+
       else
          -- copy two bits (right part)
          if (not wrapped_images[prev]) then
@@ -179,7 +183,7 @@ function Stitcher:make_index(maps)
             crop_right  =  self.panosize[1]
             crop_width  =  crop_right  - crop_left
             self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
-            self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width)) 
+            self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width)) 
          end
          -- left part
          if (not wrapped_images[next]) then
@@ -188,7 +192,7 @@ function Stitcher:make_index(maps)
             crop_right  =  img_maxw[i] - overlap_max
             crop_width  =  crop_right  - crop_left
             self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
-            self.index:narrow(1,2,2):narrow(3,crop_left,crop_width):copy(ipatches[i]:narrow(3,crop_left,crop_width))
+            self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width))
          end
       end
    end
