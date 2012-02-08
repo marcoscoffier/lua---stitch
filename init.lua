@@ -99,11 +99,15 @@ function Stitcher:make_index(maps)
    local img_maxwumpt = {}
    local img_minwompt = {}
    local wrapped_images = {}
-
    -- loops through the images and creates an index size of the panorama
    -- with only the indexes to that image.
    for i = 1,self.nimages do 
-      ipatches[i] = torch.Tensor(self.panosize[2],self.panosize[1])
+      if (self.nimages == 1) then 
+         self.index:select(1,1):fill(1)
+         ipatches[1] = self.index:select(1,2)
+      else
+         ipatches[i] = torch.Tensor(self.panosize[2],self.panosize[1])
+      end
       if torch.typename(maps[i]) ~= 'torch.PipeFile' then 
          maps[i]:seek(1)
       end
@@ -135,64 +139,67 @@ function Stitcher:make_index(maps)
          end
       end
    end
-   -- more tricky to determine wrapped images (can have multiple)
-   for i = 1,self.nimages do
-      if img_minw[i] == 1 then
-         img_maxw[i] = img_maxwumpt[i]
-         img_minw[i] = img_minwompt[i]
-         wrapped_images[i] = true
-      else
-         wrapped_images[i] = false
-      end
-   end
-   -- find boundaries.  Given the stored max and min index for each
-   -- image.  compute overlaps and copy index to final panorama
-   -- loops through all the image maps and find the overlaps.  Picks 1/2
-   -- way point of overlap to switch input images in the output.  Assumes
-   -- horizonal sequential images, so not very general
-   for i = 1,self.nimages do
-      local prev = i-1
-      local next = i+1
-      local crop_left   = 0
-      local crop_right   = 0
-      local crop_width = 0
-      local overlap_left  = 0
-      local overlap_right = 0
-      if prev < 1 then prev = self.nimages end
-      if next > self.nimages then next = 1 end
-      if (not wrapped_images[i]) then
-         if crop_left ~= 0 then 
-            crop_left = crop_right
+   if self.nimages > 1 then
+      -- more tricky to determine wrapped images (can have multiple)
+      for i = 1,self.nimages do
+         if img_minw[i] == 1 then
+            img_maxw[i] = img_maxwumpt[i]
+            img_minw[i] = img_minwompt[i]
+            wrapped_images[i] = true
          else
-            overlap_max = (img_maxw[i] - img_minw[next]) / 2
-            crop_right  =  img_maxw[i] - overlap_max
+            wrapped_images[i] = false
          end
-         overlap_min = (img_maxw[prev] - img_minw[i]) / 2
-         crop_left   =  img_minw[i] + overlap_min
-         crop_width  =  crop_right  - crop_left
-         print(self.index:size())
-         print(crop_left,crop_width)
-         self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
-         self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width))
-
-      else
-         -- copy two bits (right part)
-         if (not wrapped_images[prev]) then
+      end
+      -- find boundaries.  Given the stored max and min index for each
+      -- image.  compute overlaps and copy index to final panorama
+      -- loops through all the image maps and find the overlaps.
+      -- Picks 1/2 way point of overlap to switch input images in the
+      -- output.  Assumes horizonal sequential images, so not very
+      -- general
+      for i = 1,self.nimages do
+         local prev = i-1
+         local next = i+1
+         local crop_left   = 0
+         local crop_right   = 0
+         local crop_width = 0
+         local overlap_left  = 0
+         local overlap_right = 0
+         if prev < 1 then prev = self.nimages end
+         if next > self.nimages then next = 1 end
+         if (not wrapped_images[i]) then
+            if crop_left ~= 0 then 
+               crop_left = crop_right
+            else
+               overlap_max = (img_maxw[i] - img_minw[next]) / 2
+               crop_right  =  img_maxw[i] - overlap_max
+            end
             overlap_min = (img_maxw[prev] - img_minw[i]) / 2
             crop_left   =  img_minw[i] + overlap_min
-            crop_right  =  self.panosize[1]
             crop_width  =  crop_right  - crop_left
-            self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
-            self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width)) 
-         end
-         -- left part
-         if (not wrapped_images[next]) then
-            overlap_max = (img_maxw[i] - img_minw[next]) / 2 
-            crop_left   =  1
-            crop_right  =  img_maxw[i] - overlap_max
-            crop_width  =  crop_right  - crop_left
+            print(self.index:size())
+            print(crop_left,crop_width)
             self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
             self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width))
+            
+         else
+            -- copy two bits (right part)
+            if (not wrapped_images[prev]) then
+               overlap_min = (img_maxw[prev] - img_minw[i]) / 2
+               crop_left   =  img_minw[i] + overlap_min
+               crop_right  =  self.panosize[1]
+               crop_width  =  crop_right  - crop_left
+               self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
+               self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width)) 
+            end
+            -- left part
+            if (not wrapped_images[next]) then
+               overlap_max = (img_maxw[i] - img_minw[next]) / 2 
+               crop_left   =  1
+               crop_right  =  img_maxw[i] - overlap_max
+               crop_width  =  crop_right  - crop_left
+               self.index:select(1,1):narrow(2,crop_left,crop_width):fill(i)
+               self.index:select(1,2):narrow(2,crop_left,crop_width):copy(ipatches[i]:narrow(2,crop_left,crop_width))
+            end
          end
       end
    end
