@@ -39,8 +39,8 @@ function Stitcher:__init(pto_file)
          self.nimages = self.nimages + 1
          local w = s:match(" w%d+"):gsub(" w","")
          local h = s:match(" h%d+"):gsub(" h","")
-         table.insert(self.imgwidth, w)
-         table.insert(self.imgheight, h)
+         table.insert(self.imgwidth, tonumber(w))
+         table.insert(self.imgheight, tonumber(h))
       end 
       s = f:readString('*l') 
       if f:hasError() then 
@@ -76,6 +76,22 @@ function Stitcher:make_maps()
    return maps
 end
 
+-- wrapper to the command line hugin tool pano_trafo to make index
+-- maps for all images in a .pto file
+function Stitcher:make_reverse_maps()
+   local maps = {}
+   for i = 1,self.nimages do 
+      local cmd = string.format("for y in `seq %d %d` ; do for x in `seq %d %d` ; do echo %d $x $y ; done ;done | pano_trafo -r %s",
+                                self.panocrop[3],
+                                self.panosize[2]+self.panocrop[3],
+                                self.panocrop[1],
+                                self.panosize[1]+self.panocrop[1],
+                                i-1,self.pto_file)
+      maps[i] = torch.PipeFile(cmd,'r');
+   end
+   return maps
+end
+
 function Stitcher:load_index(fname)
    local f = torch.DiskFile(fname,'r')
    f:binary()
@@ -88,6 +104,42 @@ function Stitcher:save_index(fname)
    f:binary()
    f:writeObject(self.index)
    f:close()
+end
+
+-- from a bunch of maps (torch.Files) produced with make_maps(),
+-- create a single index self.index
+function Stitcher:make_reverse_index(maps)
+   local ipatches = {}
+   local img_maxw = {}
+   local img_minw = {}
+   local img_maxwumpt = {}
+   local img_minwompt = {}
+   local wrapped_images = {}
+   -- loops through the images and creates an index size of the panorama
+   -- with only the indexes to that image.
+   for i = 1,self.nimages do 
+      if (self.nimages == 1) then 
+         self.index:select(1,1):fill(1)
+         ipatches[1] = self.index:select(1,2)
+      else
+         ipatches[i] = torch.Tensor(self.panosize[2],self.panosize[1])
+      end
+      if torch.typename(maps[i]) ~= 'torch.PipeFile' then 
+         maps[i]:seek(1)
+      end
+      local ioff = ipatches[i]
+      for py = 1,self.panosize[2] do
+         for px = 1,self.panosize[1] do 
+            local imgx = math.floor(maps[i]:readFloat() + 0.5)
+            local imgy = math.floor(maps[i]:readFloat() + 0.5)
+            if (((imgx > 0) and (imgx <= self.imgwidth[i])) 
+             and 
+             ((imgy > 0) and (imgy <= self.imgheight[i]))) then
+               ioff[py][px] = imgy * self.imgwidth[i] + imgx 
+            end
+         end
+      end
+   end
 end
 
 -- from a bunch of maps (torch.Files) produced with make_maps(),

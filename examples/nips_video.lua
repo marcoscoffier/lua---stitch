@@ -10,7 +10,7 @@ if (sys.fstat(index_file)) then
    s:load_index(index_file)
 else
    sys.tic()
-   s:make_index(s:make_maps())
+   s:make_reverse_index(s:make_reverse_maps())
    s:save_index(index_file)
    print("made index in", sys.toc())
 end
