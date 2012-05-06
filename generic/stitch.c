@@ -33,7 +33,6 @@ static int Lstitch_(stitch)(lua_State *L) {
   real * panoR = pano_pt;
   real * panoG = pano_pt +    pano->stride[0];
   real * panoB = pano_pt + (2*pano->stride[0]);
-  THTensor * curImg = NULL;
   real * curImg_pt  = NULL;
   long unsigned int XYoffset = 0;
   long * offImg      = offset_pt;
@@ -78,7 +77,6 @@ static int Lstitch_(stitch)(lua_State *L) {
   }
   for(i=0;i<npixels;i++){
     cImgOff   = (long unsigned int)*offImg - 1;
-    curImg    = images[cImgOff];
     curImg_pt = images_pt[cImgOff];
     if ((*offIndexXY > 0) &&
         (*offIndexXY < images_npixels[cImgOff])){
@@ -93,6 +91,7 @@ static int Lstitch_(stitch)(lua_State *L) {
     offImg++;
     offIndexXY++;
   }
+  return 0;
 }
 
 // Register functions in LUA
